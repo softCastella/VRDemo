@@ -1,0 +1,227 @@
+---
+description: Use hera-agent-unity CLI for any Unity Editor task — measure, do not guess
+globs: **/*.cs,**/*.unity,**/*.prefab,**/*.asmdef,**/*.mat,**/*.asset,**/Assets/**
+alwaysApply: true
+---
+
+# hera-agent-unity — Bootstrap + Quick Rules + Pitfalls
+
+> Emitted by `hera-agent-unity doctor --agent-rules`. Works with any AI coding agent (Claude Code, Codex, Cursor, Copilot, ...). Full guide: https://github.com/NotNull92/hera-agent-unity/blob/main/AGENT.md
+
+## 0. Bootstrap on Discovery
+
+When the user invites you to engage hera-agent-unity — in any language, any phrasing — do **not** ask follow-up questions and do **not** stop at "yes, it looks installed". Run the discovery sequence and report.
+
+**Trigger phrases** (treat as equivalent):
+
+- `find hera-agent-unity` · `hera-agent-unity 찾아봐`
+- `is hera-agent-unity installed?` · `설치돼 있어?`
+- `check the editor connection` · `에디터 붙어있어?`
+- `connect to unity` · `unity에 연결해줘`
+- Anything mentioning **hera-agent-unity** or **hera-agent** in a check / discovery / "are you set up?" context.
+
+**Sequence — run all three, in order, without prompting:**
+
+1. `hera-agent-unity doctor --json` — verifies the binary is on PATH, no duplicate installs, and the connector can see at least one Unity instance. JSON envelope is parseable.
+2. `hera-agent-unity status` — confirms the active editor's port, project path, Unity version, PID, and current state (`ready`, `compiling`, …).
+3. `hera-agent-unity list --names` — discovers what tools (built-in + custom `[HeraTool]` classes) this project exposes, so subsequent prompts can be answered without re-scanning.
+
+**Report shape** (one line first, then optional details):
+
+```
+Connected: <project name> · port=<N> · unity=<version> · state=<ready|compiling> · tools=<count>
+```
+
+If a step fails, do not silently skip — surface the failure verbatim:
+
+- `doctor` says binary missing → tell the user to install it (`curl … | sh` or the README link), do not proceed.
+- `doctor` says Unity is unreachable → tell the user to open the Editor with the UPM package, do not proceed.
+- `status` returns no instances → same.
+
+After a successful bootstrap, you may proceed to whatever the user actually wanted. The bootstrap output replaces "let me check if it's installed" — that line costs tokens and tells the user nothing they can act on.
+## 1. Quick Rules (must-follow)
+
+Numbered so you can grep "[Rule N]" when in doubt.
+
+**[Rule 1]** Default to no return (or `return null;`) in `exec`. Side-effecting code (create objects, set properties, save scenes) should not return a verbose status string. The OK response is 3 bytes (`OK\n`); a hand-crafted summary string ships hundreds of bytes back into your context. The trailing `return` is **optional** — snippets without one resolve to `null` automatically.
+
+```cs
+// Bad — your status string costs ~200 tokens
+return $"Created Canvas with {n} buttons under {parent.name}";
+
+// Good — same work, 3 bytes
+return null;
+
+// Also good — omit the return entirely
+new GameObject("X");
+```
+
+> Caveat: `return;` (no value) still does NOT compile because `Execute()` returns `object`. Write `return null;` for early exits, or `throw new Exception("...")` for hard failures (see Rule 8).
+
+> The CLI emits compact JSON automatically for non-human commands (anything outside `install/uninstall/status/update/doctor/help/version`). Pass `--compact-json` or set `HERA_AGENT_COMPACT_JSON=1` to force compact on a TTY too.
+
+**[Rule 2]** Never return a `UnityEngine.Object` directly. `Transform`, `GameObject`, `Component`, `Scene`, `Material`, etc. expand to thousands of bytes of reflected properties.
+
+```cs
+// Bad — Transform serializes to 9KB+ (position, rotation, matrices, ...)
+return GameObject.Find("Canvas").transform;
+
+// Good — name + id is what you actually wanted
+var go = GameObject.Find("Canvas");
+return new { name = go.name, instanceID = go.GetInstanceID() };
+```
+
+Default `--depth` is `3`, which fully reflects Unity Objects in the response. Pass `--depth 1` (or `2`) when you want the leanest payload — depths 1–2 collapse Unity Objects to the shallow form `{name, type, instanceID}`.
+
+**[Rule 3]** Branch on the `code` field of error responses, not on the message text. Messages get tweaked across versions; `code` is the stable enum-like contract.
+
+```jsonc
+// Error envelope shape
+{
+  "success": false,
+  "code": "EXEC_COMPILE_ERROR",   // <-- branch on this
+  "message": "Your C# snippet did not compile. L1 CS1525: ... (+2 more)",
+  "data": { "compile_errors": [ ... ] }
+}
+```
+
+**[Rule 4]** Batch related operations into a single `exec` call. Each call has fixed envelope + HTTP overhead; one `exec` that creates Canvas + 3 buttons is cheaper than three separate calls. For coarser composition (`editor refresh` + `console`, etc.) use the `batch` command.
+
+**[Rule 5]** For console reads, the default `--lines` is `20` (sane cap). Use `--lines 0` only when you actually need every entry. Use `--type error` when you don't care about warnings/logs.
+
+**[Rule 6]** Runtime errors from `exec` return user-filtered stack traces by default. If you suspect the framework itself is the cause (e.g. Unity internal exception), pass `--stacktrace full` to see all frames.
+
+**[Rule 7]** Use the right tool for the job — see §2. `exec` is the universal hammer but it costs csc compile time and is harder to inspect. Dedicated commands (`scene info`, `console`, `status`, `describe_type`, `find_method`) are faster and cheaper.
+
+**[Rule 8]** When you want a logical failure to be visible at the CLI exit-code layer, either **throw** (`throw new System.Exception("missing")` → `EXEC_RUNTIME_ERROR`, exit non-zero) or run with `--strict` so that any `Debug.LogError/LogException/LogAssert` raised during the snippet flips the response to `EXEC_LOGGED_ERROR`. Without one of these, `Debug.LogError("..."); return null;` is indistinguishable from a clean run by exit code — only the Unity console sees it.
+
+```cs
+// Off (default) — agent sees success even though "missing" was logged
+// hera-agent-unity exec "Debug.LogError(\"missing\"); return null;"
+//   → exit 0, success
+
+// On — same code surfaces as EXEC_LOGGED_ERROR
+// hera-agent-unity exec "Debug.LogError(\"missing\"); return null;" --strict
+//   → exit 1, code=EXEC_LOGGED_ERROR
+```
+## 4. Pitfalls
+
+### 4.1 `GameObject.Find` is active-only
+
+`Find` walks the active object graph. An object you just `SetActive(false)`'d is invisible to it; subsequent `Find` returns `null` → `NullReferenceException` on the next member access.
+
+Workaround: `Resources.FindObjectsOfTypeAll<GameObject>().FirstOrDefault(g => g.name == "X" && g.scene.IsValid())`.
+
+### 4.2 Cold csc compile is slow
+
+The first `exec` per Unity session pays csc startup (5–15s on Windows). Subsequent unique `exec` bodies are ~500ms–2s (csc warm in OS cache). Identical bodies hit the in-memory assembly cache and skip compile entirely (~10ms). Don't infer the tool is broken from one slow first call.
+
+### 4.3 Domain reload cancels in-flight HTTP
+
+If your `exec` triggers a script recompile or asset import that causes a domain reload, the HTTP connection drops. `hera-agent-unity` auto-retries the request transparently (up to ~5s) but a connection that was mid-execute may complete *after* you get a disconnection message. Use `editor refresh --compile` explicitly when you need to be sure compilation is done before continuing.
+
+### 4.4 `--params` JSON shape
+
+When using `--params '{"k":"v"}'`, explicit `--k v` flags override the JSON. Don't set the same key in both.
+
+### 4.5 Cursor / bash `$(...)` / CI: no `$null |` workaround needed
+
+In non-TTY shells, stdin is open but never delivers EOF. The CLI's stdin reader detects this (`os.ModeNamedPipe` + `IsRegular` guard) and skips the read, so you can call `exec` exactly like you would in an interactive terminal:
+
+```bash
+hera-agent-unity exec "return Application.productName;"
+```
+
+No `$null |` prefix. No `</dev/null` redirect. If you do see `exec` hang in Cursor or CI, you're on an outdated binary — run `hera-agent-unity update`.
+
+### 4.6 `console --clear` cannot be undone
+
+Logs cleared can't be recovered. If you're debugging, read first, then clear.
+
+### 4.7 Custom tools must be in an Editor assembly
+
+`[HeraTool]` classes only auto-register if their assembly is loaded by the Editor. Runtime-only assemblies are invisible. If `list` doesn't show your new tool, check that the file lives in an `Editor/` folder or that the asmdef has `Editor` in `includePlatforms`.
+
+### 4.8 The `agent_hint` field on stderr
+
+Tools occasionally emit a one-line `hint:` to stderr when there's a non-obvious next action (e.g. "scene is dirty; save before close"). Read stderr alongside stdout — `2>&1` merges them.
+
+### 4.9 `humanCategories` whitelist drives output mode
+
+The CLI classifies commands as human-target (`install` / `uninstall` / `status` / `update` / `doctor` / `help` / `version`) or AI-target (everything else). AI-target commands automatically emit compact JSON and suppress decorative stderr. If you author a new top-level command and add it to `humanCategories`, agents will get indented output for it — usually unintended.
+
+### 4.10 `batch` has no conditional or data passing
+
+By design. Each step's result is reported but not piped to the next step. If you need "do X only if Y succeeded", issue separate calls. Don't try to encode logic into batch JSON. `fail_fast: true` (default) is the only branching primitive.
+
+### 4.11 `list_assemblies` without `--filter` returns hundreds of entries
+
+Use `--filter Unity` / `--filter MyGame` / etc. to scope. Same for `find_method` — always pass `--limit` and `--namespace` when you can. The connector won't paginate; oversized responses just inflate your context.
+
+### 4.12 `return;` (no value) does not compile in `exec`
+
+Your snippet is wrapped in `static object Execute() { ... }`. A bare `return;` triggers `CS0126` ("an object of a type convertible to 'object' is required"). Use `return null;` for early exits, or omit the return entirely (it falls through to `null`). `throw` also works and is preferred when the early exit represents a failure (exit non-zero via `EXEC_RUNTIME_ERROR`).
+
+```cs
+// Bad — CS0126
+if (canvas == null) { Debug.LogError("missing"); return; }
+
+// Good — explicit null
+if (canvas == null) { Debug.LogError("missing"); return null; }
+
+// Better when this is actually a failure — surfaces as EXEC_RUNTIME_ERROR
+if (canvas == null) throw new System.Exception("BootCanvas not found");
+```
+
+### 4.13 PowerShell `exec` quoting
+
+PowerShell's `'single quotes'` do **not** interpret backslash escapes — bash-style `\"` lands as a literal `\` in the snippet, then csc reports `CS1056: Unexpected character '\\'`. PowerShell's `"double quotes"` interpret `$`, backtick, and a few others as PowerShell syntax, so most C# snippets don't survive that either. Three patterns always work in PowerShell:
+
+```powershell
+# 1. Multi-line, or contains quotes — stdin pipe + here-string (preferred)
+@'
+var iap = AssetDatabase.FindAssets("t:IAPRewardEntry").Length;
+return iap;
+'@ | hera-agent-unity exec
+
+# 2. Short, single-line — single-quoted string, write " directly (no escaping)
+hera-agent-unity exec 'return AssetDatabase.FindAssets("t:IAPRewardEntry").Length;'
+
+# 3. Long or reusable — load from disk
+hera-agent-unity exec --file scripts\probe.cs
+```
+
+Anti-patterns that fail in PowerShell:
+
+- `hera-agent-unity exec "var x = ...; return x;"` — PowerShell interprets `$`, backtick, `;` inside double quotes.
+- `hera-agent-unity exec 'var s = \"a\";'` — `\"` is **literal** inside single quotes; csc rejects the `\`.
+- `$code = @'...'@` in one shell call, then `hera-agent-unity exec $code` in a **separate** shell call (e.g. agents that issue each command as a fresh PowerShell process) — `$code` evaporates between calls. Chain inside one invocation: `$code = @'...'@; hera-agent-unity exec $code`.
+
+bash equivalent: same idea, replace `@'...'@` with `<<'EOF'` heredoc or single-quoted `'...'` string. Avoid `\"` unless the outer wrapper is `"..."`.
+
+### 4.14 Custom `[HeraTool]` namespace collisions
+
+When you author a new tool under `AgentConnector/Editor/Tools/`, two type-name collisions reliably trigger `CS0104` on Unity's compiler the moment both `using System;` and `using UnityEditor;` are in scope (which most tools need):
+
+- **`Object`** — `System.Object` vs `UnityEngine.Object`. Qualify destroys as `UnityEngine.Object.Destroy(...)` / `UnityEngine.Object.DestroyImmediate(...)`, or alias once: `using Object = UnityEngine.Object;`.
+- **`PackageInfo`** — `UnityEditor.PackageInfo` (legacy AssetStore type) vs `UnityEditor.PackageManager.PackageInfo`. Alias once: `using PackageInfo = UnityEditor.PackageManager.PackageInfo;`.
+
+Other pairs worth aliasing pre-emptively when you reach for them: `Random` (`System.Random` vs `UnityEngine.Random` — different semantics) and `Debug` (`System.Diagnostics.Debug` vs `UnityEngine.Debug`). Grep for bare `Object` / `PackageInfo` / `Random` / `Debug` once before triggering the first compile to skip a hotfix round-trip.
+
+### 4.15 PowerShell `--params` JSON quoting
+
+The same shell-escape failure mode as §4.13 hits `--params '{...}'` payloads on PowerShell. The JSON inside must reach the CLI with **raw double-quotes intact** — PowerShell does not let you bash-style escape them, and the bash-style attempt silently produces `invalid JSON in --params: invalid character '\\' ...`.
+
+```powershell
+# Works — single-quoted outer string keeps " literal
+hera-agent-unity manage_components set --component_id 12345 `
+  --params '{"property":"m_CenterOfMass","value":[0,1,0]}'
+
+# Fails — backslash-escaped " survive into the JSON as literal '\"'
+hera-agent-unity manage_components set --component_id 12345 `
+  --params "{\"property\":\"m_CenterOfMass\",\"value\":[0,1,0]}"
+```
+
+bash equivalent: same pattern — single-quoted outer is the safe form, no `\"` rewriting.
+
+Or sidestep `--params` entirely for simple values by splitting the keys: `--property m_CenterOfMass --value 0,1,0` ships the same Vector3 through the scalar-friendly flag (comma strings are accepted alongside JSON arrays for Vector2/3/4, Quaternion, Color, Vector2Int, Vector3Int). Reserve `--params` for nested envelopes that the scalar flags cannot represent — `{"value": {"asset_path": "..."}}`, `{"value": {"instance_id": -12345}}`, deeply-nested arrays.
