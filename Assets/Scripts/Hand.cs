@@ -1,109 +1,74 @@
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.XR;
-using UnityEngine.XR.Interaction.Toolkit.Inputs;
 
 public class Hand : MonoBehaviour
 {
-    const string LeftInteractionMapName = "XRI Left Interaction";
-    const string RightInteractionMapName = "XRI Right Interaction";
-    const string GripValueActionName = "Select Value";
+    public InputDeviceCharacteristics inputDeviceCharacteristics;
 
-    [SerializeField]
-    InputDeviceCharacteristics inputDeviceCharacteristics;
+    [SerializeField] private Animator _handAnimator;
 
-    [SerializeField]
-    Animator _handAnimator;
+    private InputAction _gripAction;
 
-    UnityEngine.XR.InputDevice _targetDevice;
-    InputAction _fallbackGripAction;
-    bool _useLeftHand = true;
-
-    void OnEnable()
-    {
-        EnsureDeviceCharacteristics();
-        ResolveFallbackGripAction();
-        _fallbackGripAction?.Enable();
-    }
-
-    void OnDisable()
-    {
-        _fallbackGripAction?.Disable();
-    }
-
-    void Start()
-    {
-        InitializeHand();
-    }
-
-    void Update()
-    {
-        if (!_targetDevice.isValid)
-            InitializeHand();
-
-        UpdateHand();
-    }
-
-    void EnsureDeviceCharacteristics()
-    {
-        if (inputDeviceCharacteristics != InputDeviceCharacteristics.None)
-            return;
-
-        var name = gameObject.name.ToLowerInvariant();
-        _useLeftHand = name.Contains("left") || name.EndsWith("_l");
-        inputDeviceCharacteristics = (_useLeftHand ? InputDeviceCharacteristics.Left : InputDeviceCharacteristics.Right)
-            | InputDeviceCharacteristics.Controller;
-    }
-
-    void InitializeHand()
-    {
-        var devices = new List<UnityEngine.XR.InputDevice>();
-        InputDevices.GetDevicesWithCharacteristics(inputDeviceCharacteristics, devices);
-
-        if (devices.Count > 0)
-            _targetDevice = devices[0];
-    }
-
-    void ResolveFallbackGripAction()
-    {
-        var mapName = _useLeftHand ? LeftInteractionMapName : RightInteractionMapName;
-        var managers = FindObjectsByType<InputActionManager>(FindObjectsInactive.Include, FindObjectsSortMode.None);
-
-        foreach (var manager in managers)
-        {
-            foreach (var asset in manager.actionAssets)
-            {
-                if (asset == null)
-                    continue;
-
-                var action = asset.FindActionMap(mapName)?.FindAction(GripValueActionName);
-                if (action == null)
-                    continue;
-
-                _fallbackGripAction = action;
-                return;
-            }
-        }
-    }
-
-    void UpdateHand()
+    private void Awake()
     {
         if (_handAnimator == null)
-            return;
-
-        var grip = ReadGripValue();
-        _handAnimator.SetFloat("Grip", grip);
+            _handAnimator = GetComponent<Animator>();
     }
 
-    float ReadGripValue()
+    private void OnEnable()
     {
-        if (_targetDevice.isValid && _targetDevice.TryGetFeatureValue(UnityEngine.XR.CommonUsages.grip, out float deviceGrip))
-            return deviceGrip;
+        _gripAction = CreateGripAction(ResolveHandUsage());
+        _gripAction.Enable();
+    }
 
-        if (_fallbackGripAction != null)
-            return _fallbackGripAction.ReadValue<float>();
+    private void OnDisable()
+    {
+        _gripAction?.Disable();
+        _gripAction?.Dispose();
+        _gripAction = null;
+    }
 
-        return 0f;
+    private void Update()
+    {
+        if (_handAnimator == null || _gripAction == null)
+            return;
+
+        _handAnimator.SetFloat("Grip", _gripAction.ReadValue<float>());
+    }
+
+    public float CurrentGrip => _gripAction != null ? _gripAction.ReadValue<float>() : 0f;
+
+    public void BindAnimator(Animator animator)
+    {
+        _handAnimator = animator;
+    }
+
+    private static InputAction CreateGripAction(string handUsage)
+    {
+        return new InputAction(
+            name: $"HandGrip_{handUsage}",
+            type: InputActionType.Value,
+            binding: $"<XRController>{{{handUsage}}}/grip",
+            expectedControlType: "Axis");
+    }
+
+    private string ResolveHandUsage()
+    {
+        if (inputDeviceCharacteristics.HasFlag(InputDeviceCharacteristics.Left))
+            return "LeftHand";
+        if (inputDeviceCharacteristics.HasFlag(InputDeviceCharacteristics.Right))
+            return "RightHand";
+
+        for (Transform t = transform; t != null; t = t.parent)
+        {
+            if (t.name.IndexOf("Left", System.StringComparison.OrdinalIgnoreCase) >= 0)
+                return "LeftHand";
+            if (t.name.IndexOf("Right", System.StringComparison.OrdinalIgnoreCase) >= 0)
+                return "RightHand";
+        }
+
+        Debug.LogWarning($"[Hand] '{name}' could not resolve hand side; defaulting to LeftHand.", this);
+        return "LeftHand";
     }
 }

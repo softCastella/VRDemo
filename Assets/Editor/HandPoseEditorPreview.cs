@@ -24,6 +24,14 @@ public static class HandPoseEditorPreview
     static HandPoseEditorPreview()
     {
         BeginSceneViewDrawing();
+        EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
+    }
+
+    static void OnPlayModeStateChanged(PlayModeStateChange state)
+    {
+        if (state == PlayModeStateChange.ExitingEditMode ||
+            state == PlayModeStateChange.EnteredPlayMode)
+            ClearPreview(restoreOriginal: true);
     }
 
     public static void BeginSceneViewDrawing()
@@ -52,10 +60,12 @@ public static class HandPoseEditorPreview
             return false;
         }
 
-        var root = FindLeftHandSkeletonRoot();
+        var root = FindHandSkeletonRoot(pose.Handedness);
         if (root == null)
         {
-            message = "씬에서 왼손 스켈레톤(L_Wrist / LeftHand)을 찾지 못했습니다.";
+            message = pose.Handedness == Handedness.Right
+                ? "씬에서 오른손 스켈레톤(R_Wrist / RightHand)을 찾지 못했습니다."
+                : "씬에서 왼손 스켈레톤(L_Wrist / LeftHand)을 찾지 못했습니다.";
             return false;
         }
 
@@ -105,7 +115,7 @@ public static class HandPoseEditorPreview
         SceneView.RepaintAll();
     }
 
-    public static Transform FindLeftHandSkeletonRoot()
+    public static Transform FindHandSkeletonRoot(Handedness handedness)
     {
         var drivers = Object.FindObjectsByType<XRHandSkeletonDriver>(
             FindObjectsInactive.Include,
@@ -114,7 +124,7 @@ public static class HandPoseEditorPreview
         foreach (var driver in drivers)
         {
             var handEvents = driver.handTrackingEvents;
-            if (handEvents == null || handEvents.handedness != Handedness.Left)
+            if (handEvents == null || handEvents.handedness != handedness)
                 continue;
 
             if (driver.rootTransform != null)
@@ -123,16 +133,35 @@ public static class HandPoseEditorPreview
             return driver.transform;
         }
 
-        var wristObject = GameObject.Find("L_Wrist");
+        var wristBoneName = handedness == Handedness.Right
+            ? HandPoseApplier.RightWristBoneName
+            : HandPoseApplier.LeftWristBoneName;
+        var handRootName = handedness == Handedness.Right ? "RightHand" : "LeftHand";
+
+        var wristObject = FindTransformInLoadedScenes(wristBoneName);
         if (wristObject != null)
+            return wristObject.parent != null ? wristObject.parent : wristObject;
+
+        var handRoot = FindTransformInLoadedScenes(handRootName);
+        return handRoot;
+    }
+
+    static Transform FindTransformInLoadedScenes(string objectName)
+    {
+        if (string.IsNullOrEmpty(objectName))
+            return null;
+
+        var transforms = Object.FindObjectsByType<Transform>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        foreach (var transform in transforms)
         {
-            var wrist = wristObject.transform;
-            return wrist.parent != null ? wrist.parent : wrist;
+            if (transform.name == objectName && transform.gameObject.scene.IsValid())
+                return transform;
         }
 
-        var leftHand = GameObject.Find("LeftHand");
-        return leftHand != null ? leftHand.transform : null;
+        return null;
     }
+
+    public static Transform FindLeftHandSkeletonRoot() => FindHandSkeletonRoot(Handedness.Left);
 
     public static Vector3 ResolvePreviewOrigin(bool placeInFrontOfCamera)
     {

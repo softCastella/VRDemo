@@ -1,60 +1,85 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.XR.Hands;
+using UnityEngine.XR.Hands.Samples.VisualizerSample;
 
 /// <summary>
-/// Quest 등에서 컨트롤러를 잡으면 손 트래킹이 끊기면서 Hand Visualizer가 손/스켈레톤을 숨깁니다.
-/// 포즈 캡처 시 그립 버튼을 누르기 위해 컨트롤러를 들어도 왼손이 마지막 포즈로 유지되게 합니다.
+/// 포즈 캡처 툴이 켜져 있을 때만 스켈레톤 디버그를 표시하고,
+/// 캡처 중 컨트롤러 그립으로 트래킹이 끊겨도 손 메쉬는 유지합니다.
+/// Hand Visualizer 오브젝트에 붙인 인스턴스만 스켈레톤 표시를 제어합니다.
 /// </summary>
 [DisallowMultipleComponent]
 public class HandPoseCaptureVisibilitySupport : MonoBehaviour
 {
-    const string LeftDebugDrawJointsName = "LeftHandDebugDrawJoints";
+    [SerializeField]
+    bool m_KeepTrackedHandMeshWhenTrackingLost = true;
 
     [SerializeField]
-    bool m_KeepLeftHandMeshWhenTrackingLost = true;
+    [Tooltip("켜면 '그립 버튼으로 캡처 대기' 중에만 스켈레톤을 표시합니다. 끄면 Hand Visualizer Inspector 설정을 따릅니다.")]
+    bool m_OnlyShowSkeletonWhileCaptureListening = true;
 
-    [SerializeField]
-    bool m_KeepLeftHandSkeletonWhenTrackingLost = true;
-
-    readonly List<XRHandMeshController> m_LeftMeshControllers = new();
-    Transform m_LeftDebugDrawRoot;
+    readonly List<XRHandMeshController> m_TrackedMeshControllers = new();
+    HandVisualizer m_HandVisualizer;
     bool m_ConfiguredMeshControllers;
+    bool m_ManagesSkeletonVisibility;
+
+    void Awake()
+    {
+        ResolveHandVisualizer();
+        m_ManagesSkeletonVisibility = m_HandVisualizer != null && ShouldOwnSkeletonManagement();
+    }
 
     void OnEnable()
     {
         m_ConfiguredMeshControllers = false;
-        m_LeftDebugDrawRoot = null;
-        TryConfigureLeftHandMeshes();
+        ResolveHandVisualizer();
+        m_ManagesSkeletonVisibility = m_HandVisualizer != null && ShouldOwnSkeletonManagement();
+
+        TryConfigureTrackedHandMeshes();
+        SyncSkeletonVisibility();
+    }
+
+    void OnDisable()
+    {
+        if (!Application.isPlaying || !m_ManagesSkeletonVisibility)
+            return;
+
+        if (m_OnlyShowSkeletonWhileCaptureListening)
+            ApplyCaptureSkeletonVisibility(false);
     }
 
     void LateUpdate()
     {
-        if (!m_KeepLeftHandMeshWhenTrackingLost && !m_KeepLeftHandSkeletonWhenTrackingLost)
+        if (!Application.isPlaying)
             return;
 
         if (!m_ConfiguredMeshControllers)
-            TryConfigureLeftHandMeshes();
+            TryConfigureTrackedHandMeshes();
 
-        if (!m_KeepLeftHandSkeletonWhenTrackingLost)
-            return;
+        if (m_KeepTrackedHandMeshWhenTrackingLost && HandPoseCaptureSession.IsListening)
+            KeepTrackedHandMeshesVisible();
 
-        if (IsLeftHandTracked())
-            return;
-
-        var debugRoot = ResolveLeftDebugDrawRoot();
-        if (debugRoot == null)
-            return;
-
-        SetRenderersEnabled(debugRoot, true);
+        SyncSkeletonVisibility();
     }
 
-    void TryConfigureLeftHandMeshes()
+    void SyncSkeletonVisibility()
     {
-        if (!m_KeepLeftHandMeshWhenTrackingLost)
+        if (!m_ManagesSkeletonVisibility || !m_OnlyShowSkeletonWhileCaptureListening)
             return;
 
-        m_LeftMeshControllers.Clear();
+        ApplyCaptureSkeletonVisibility(ShouldShowCaptureSkeleton());
+    }
+
+    static bool ShouldShowCaptureSkeleton() =>
+        Application.isPlaying && HandPoseCaptureSession.IsListening;
+
+    void TryConfigureTrackedHandMeshes()
+    {
+        if (!m_KeepTrackedHandMeshWhenTrackingLost)
+            return;
+
+        m_TrackedMeshControllers.Clear();
+        var targetHand = HandPoseCaptureSession.CaptureHandedness;
 
         var meshControllers = FindObjectsByType<XRHandMeshController>(
             FindObjectsInactive.Include,
@@ -63,50 +88,90 @@ public class HandPoseCaptureVisibilitySupport : MonoBehaviour
         foreach (var meshController in meshControllers)
         {
             var handEvents = meshController.handTrackingEvents;
-            if (handEvents == null || handEvents.handedness != Handedness.Left)
+            if (handEvents == null || handEvents.handedness != targetHand)
+                continue;
+
+            m_TrackedMeshControllers.Add(meshController);
+        }
+
+        m_ConfiguredMeshControllers = m_TrackedMeshControllers.Count > 0;
+    }
+
+    void KeepTrackedHandMeshesVisible()
+    {
+        foreach (var meshController in m_TrackedMeshControllers)
+        {
+            if (meshController == null)
                 continue;
 
             meshController.hideMeshWhenTrackingIsLost = false;
-
             if (meshController.handMeshRenderer != null)
                 meshController.handMeshRenderer.enabled = true;
-
-            m_LeftMeshControllers.Add(meshController);
         }
-
-        m_ConfiguredMeshControllers = m_LeftMeshControllers.Count > 0;
     }
 
-    Transform ResolveLeftDebugDrawRoot()
+    void ApplyCaptureSkeletonVisibility(bool visible)
     {
-        if (m_LeftDebugDrawRoot != null)
-            return m_LeftDebugDrawRoot;
+        if (!Application.isPlaying)
+            return;
 
-        var found = GameObject.Find(LeftDebugDrawJointsName);
-        if (found != null)
-            m_LeftDebugDrawRoot = found.transform;
+        var visualizer = ResolveHandVisualizer();
+        if (visualizer == null)
+            return;
 
-        return m_LeftDebugDrawRoot;
+        visualizer.debugDrawJoints = visible;
+
+        var rootName = HandPoseCaptureSession.CaptureHandedness == Handedness.Right
+            ? "RightHandDebugDrawJoints"
+            : "LeftHandDebugDrawJoints";
+
+        SetDebugDrawRootVisible(visualizer.transform, rootName, visible);
     }
 
-    static bool IsLeftHandTracked()
+    static void SetDebugDrawRootVisible(Transform visualizerRoot, string rootName, bool visible)
     {
-        var subsystems = new List<XRHandSubsystem>();
-        SubsystemManager.GetSubsystems(subsystems);
+        if (visualizerRoot == null)
+            return;
 
-        foreach (var subsystem in subsystems)
+        var foundRoot = false;
+        foreach (var jointRoot in visualizerRoot.GetComponentsInChildren<Transform>(true))
         {
-            if (subsystem.running && subsystem.leftHand.isTracked)
-                return true;
+            if (jointRoot.name != rootName)
+                continue;
+
+            foundRoot = true;
+            foreach (var line in jointRoot.GetComponentsInChildren<LineRenderer>(true))
+                line.enabled = visible;
+
+            foreach (var renderer in jointRoot.GetComponentsInChildren<Renderer>(true))
+                renderer.enabled = visible;
         }
 
-        return false;
+        if (!foundRoot && visible)
+            visualizerRoot.gameObject.SetActive(true);
     }
 
-    static void SetRenderersEnabled(Transform root, bool enabled)
+    HandVisualizer ResolveHandVisualizer()
     {
-        var renderers = root.GetComponentsInChildren<Renderer>(true);
-        foreach (var renderer in renderers)
-            renderer.enabled = enabled;
+        if (m_HandVisualizer != null)
+            return m_HandVisualizer;
+
+        m_HandVisualizer = GetComponent<HandVisualizer>();
+        if (m_HandVisualizer == null)
+            m_HandVisualizer = FindFirstObjectByType<HandVisualizer>(FindObjectsInactive.Include);
+
+        return m_HandVisualizer;
+    }
+
+    bool ShouldOwnSkeletonManagement()
+    {
+        if (GetComponent<HandVisualizer>() != null)
+            return true;
+
+        if (m_HandVisualizer == null)
+            return false;
+
+        var onVisualizer = m_HandVisualizer.GetComponent<HandPoseCaptureVisibilitySupport>();
+        return onVisualizer == null || onVisualizer == this;
     }
 }

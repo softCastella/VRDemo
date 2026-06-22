@@ -9,6 +9,8 @@ public static class HandPoseCaptureSession
 
     public static bool IsListening { get; set; }
 
+    public static Handedness CaptureHandedness { get; set; } = Handedness.Left;
+
     public static string NextPoseName { get; set; } = "HandPose";
 
     public static string StatusMessage { get; private set; } = "대기 중";

@@ -7,8 +7,8 @@ public static class HandPoseHierarchyConverter
         IReadOnlyList<HandBonePoseData> wristRelativeBones,
         HandPoseAnimationRig rig)
     {
-        return rig == HandPoseAnimationRig.OculusLeftHand
-            ? HandPoseAnimationPathUtility.ComputeOculusLocalPoses(wristRelativeBones)
+        return HandPoseRigUtility.IsOculusRig(rig)
+            ? HandPoseAnimationPathUtility.ComputeOculusLocalPoses(wristRelativeBones, rig)
             : ToLocalHierarchy(wristRelativeBones);
     }
 

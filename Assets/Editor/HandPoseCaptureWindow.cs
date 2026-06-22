@@ -5,13 +5,19 @@ using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using UnityEngine.XR.Hands;
 
 public class HandPoseCaptureWindow : EditorWindow
 {
     const string HandPracScenePath = "Assets/Scenes/Hand_Prac.unity";
     const string CapturerObjectName = "Hand Pose Capturer";
 
+    [SerializeField]
     string m_NextPoseName = "HandOpen";
+
+    [SerializeField]
+    Handedness m_CaptureHandedness = Handedness.Left;
+
     Vector2 m_PoseListScrollPosition;
     Vector2 m_BoneListScrollPosition;
     bool m_IsListening;
@@ -20,10 +26,10 @@ public class HandPoseCaptureWindow : EditorWindow
 
     HandPoseData m_AnimationStartPose;
     HandPoseData m_AnimationEndPose;
-    HandPoseAnimationRig m_AnimationRig = HandPoseAnimationRig.OculusLeftHand;
+    HandPoseAnimationRig m_AnimationRig = HandPoseAnimationRig.MetaLeftHand;
     string m_TransitionClipName = "HandOpen_to_HandHalfGrip";
     string m_AnimationOutputFolder = HandPoseAnimationGenerator.DefaultOutputFolder;
-    bool m_AssignToOculusController = true;
+    bool m_AssignToHandController = true;
 
     readonly List<HandPoseData> m_PoseAssets = new();
     int m_SelectedPoseIndex = -1;
@@ -41,6 +47,11 @@ public class HandPoseCaptureWindow : EditorWindow
         HandPoseCaptureSession.PoseCaptured += OnPoseCaptured;
         EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
         m_IsListening = HandPoseCaptureSession.IsListening;
+        // 도메인 리로드(Play 시작)로 Session 값이 초기화될 수 있으므로,
+        // 창에 저장된 손 선택을 다시 Session에 적용합니다.
+        HandPoseCaptureSession.CaptureHandedness = m_CaptureHandedness;
+        m_AnimationRig = HandPoseRigUtility.GetDefaultMetaRig(m_CaptureHandedness);
+        ResetAnimationPosesForHand(m_CaptureHandedness);
         RefreshPoseAssets();
         TryAssignDefaultAnimationPoses();
     }
@@ -73,14 +84,23 @@ public class HandPoseCaptureWindow : EditorWindow
 
     void OnGUI()
     {
-        EditorGUILayout.LabelField("Hand_Prac — XR LeftHand 포즈 캡처", EditorStyles.boldLabel);
+        EditorGUILayout.LabelField("Hand_Prac — XR Hand 포즈 캡처", EditorStyles.boldLabel);
         EditorGUILayout.HelpBox(
-            "Play Mode에서 왼손 포즈를 만든 뒤 그립 버튼을 누르면 ScriptableObject로 저장됩니다.\n" +
+            "Play Mode에서 선택한 손 포즈를 그립 버튼으로 캡처하면 ScriptableObject로 저장됩니다.\n" +
             $"저장 위치: {HandPoseCaptureSession.DefaultPoseFolder}\n" +
-            "캡처 시 손목(L_Wrist)을 기준으로 (0,0,0) 좌표계에 정규화되어 저장됩니다.",
+            "캡처 시 손목(Wrist)을 기준으로 (0,0,0) 좌표계에 정규화되어 저장됩니다.",
             MessageType.Info);
 
         EditorGUILayout.Space();
+        EditorGUI.BeginChangeCheck();
+        m_CaptureHandedness = (Handedness)EditorGUILayout.EnumPopup("캡처할 손", m_CaptureHandedness);
+        if (EditorGUI.EndChangeCheck())
+        {
+            HandPoseCaptureSession.CaptureHandedness = m_CaptureHandedness;
+            m_AnimationRig = HandPoseRigUtility.GetDefaultMetaRig(m_CaptureHandedness);
+            ResetAnimationPosesForHand(m_CaptureHandedness);
+        }
+
         m_NextPoseName = EditorGUILayout.TextField("다음 포즈 이름", m_NextPoseName);
         HandPoseCaptureSession.NextPoseName = m_NextPoseName;
 
@@ -134,12 +154,21 @@ public class HandPoseCaptureWindow : EditorWindow
         if (!Application.isPlaying)
         {
             EditorGUILayout.HelpBox(
-                "Play Mode에서 Hand Visualizer가 왼손을 추적할 때 캡처할 수 있습니다.",
+                $"Play Mode에서 Hand Visualizer가 {m_CaptureHandedness} 손을 추적할 때 캡처할 수 있습니다.",
                 MessageType.Warning);
         }
         else
         {
             EditorGUILayout.HelpBox(HandPoseCaptureSession.StatusMessage, MessageType.None);
+
+            if (!HandPoseCaptureSession.IsListening)
+            {
+                EditorGUILayout.HelpBox(
+                    "스켈레톤(관절 디버그)은 '그립 버튼으로 캡처 대기'를 켜야 표시됩니다.\n" +
+                    "항상 보이게 하려면 Hand Visualizer에서 Debug Draw Joints를 켜고,\n" +
+                    "HandPoseCaptureVisibilitySupport의 Only Show Skeleton While Capture Listening을 끄세요.",
+                    MessageType.Info);
+            }
 
             if (!FindCapturerInActiveScene())
             {
@@ -186,7 +215,7 @@ public class HandPoseCaptureWindow : EditorWindow
             EditorGUILayout.BeginVertical(style);
             using (new EditorGUILayout.HorizontalScope())
             {
-                if (GUILayout.Toggle(isSelected, pose.PoseName, EditorStyles.radioButton))
+                if (GUILayout.Toggle(isSelected, $"{pose.PoseName} ({pose.Handedness})", EditorStyles.radioButton))
                 {
                     if (!isSelected)
                     {
@@ -213,8 +242,8 @@ public class HandPoseCaptureWindow : EditorWindow
         EditorGUILayout.Space();
         EditorGUILayout.LabelField("애니메이션 생성", EditorStyles.boldLabel);
         EditorGUILayout.HelpBox(
-            "저장된 포즈 2개로 Open/Grip 클립 또는 전환 클립을 만듭니다.\n" +
-            "Oculus Left Hand 리그는 OculusHand_L.controller의 Grip 블렌드 트리와 호환됩니다.",
+            "Meta Left/Right: L_* 또는 R_* 본 경로 (MetaHand_L / MetaHand_R).\n" +
+            "Oculus Left/Right: b_l_* 또는 b_r_* 본 경로 (OculusHand_L / OculusHand_R).",
             MessageType.Info);
 
         m_AnimationStartPose = (HandPoseData)EditorGUILayout.ObjectField(
@@ -224,7 +253,7 @@ public class HandPoseCaptureWindow : EditorWindow
             false);
 
         m_AnimationEndPose = (HandPoseData)EditorGUILayout.ObjectField(
-            "끝 포즈 (Grip)",
+            "끝 포즈 (Open/Grip/HalfGrip)",
             m_AnimationEndPose,
             typeof(HandPoseData),
             false);
@@ -232,9 +261,9 @@ public class HandPoseCaptureWindow : EditorWindow
         m_AnimationRig = (HandPoseAnimationRig)EditorGUILayout.EnumPopup("대상 리그", m_AnimationRig);
         m_TransitionClipName = EditorGUILayout.TextField("전환 클립 이름", m_TransitionClipName);
         m_AnimationOutputFolder = EditorGUILayout.TextField("저장 폴더", m_AnimationOutputFolder);
-        m_AssignToOculusController = EditorGUILayout.Toggle(
-            "OculusHand_L.controller에 연결",
-            m_AssignToOculusController);
+        m_AssignToHandController = EditorGUILayout.Toggle(
+            "손 Animator Controller에 연결",
+            m_AssignToHandController);
 
         using (new EditorGUILayout.HorizontalScope())
         {
@@ -260,12 +289,63 @@ public class HandPoseCaptureWindow : EditorWindow
         }
     }
 
+    void ResetAnimationPosesForHand(Handedness handedness)
+    {
+        if (m_AnimationStartPose != null && m_AnimationStartPose.Handedness != handedness)
+            m_AnimationStartPose = null;
+        if (m_AnimationEndPose != null && m_AnimationEndPose.Handedness != handedness)
+            m_AnimationEndPose = null;
+
+        TryAssignDefaultAnimationPoses(handedness);
+    }
+
     void TryAssignDefaultAnimationPoses()
     {
+        TryAssignDefaultAnimationPoses(m_CaptureHandedness);
+    }
+
+    void TryAssignDefaultAnimationPoses(Handedness handedness)
+    {
         if (m_AnimationStartPose == null)
-            m_AnimationStartPose = FindPoseByName("HandOpen");
+        {
+            m_AnimationStartPose = handedness == Handedness.Right
+                ? FindPoseForHand(handedness, "HandOpen_Right", "HandOpen")
+                : FindPoseForHand(handedness, "HandOpen", "HandOpen_Left", "HandOpen_Left0");
+        }
+
         if (m_AnimationEndPose == null)
-            m_AnimationEndPose = FindPoseByName("HandHalfGrip") ?? FindPoseByName("HandGripHalf");
+        {
+            m_AnimationEndPose = handedness == Handedness.Right
+                ? FindPoseForHand(handedness, "HandGrip_Right", "HandHalfGrip_Right", "HandGrip", "HandHalfGrip")
+                : FindPoseForHand(handedness, "HandHalfGrip", "HandHalfGrip_Left", "HandGrip_Left", "HandGrip", "HandGripRe");
+        }
+    }
+
+    HandPoseData FindPoseForHand(Handedness handedness, params string[] preferredNames)
+    {
+        foreach (var preferredName in preferredNames)
+        {
+            foreach (var pose in m_PoseAssets)
+            {
+                if (pose != null && pose.PoseName == preferredName && pose.Handedness == handedness)
+                    return pose;
+            }
+        }
+
+        foreach (var preferredName in preferredNames)
+        {
+            foreach (var pose in m_PoseAssets)
+            {
+                if (pose == null || pose.Handedness != handedness)
+                    continue;
+
+                if (pose.PoseName != null &&
+                    pose.PoseName.IndexOf(preferredName, System.StringComparison.OrdinalIgnoreCase) >= 0)
+                    return pose;
+            }
+        }
+
+        return null;
     }
 
     HandPoseData FindPoseByName(string poseName)
@@ -299,6 +379,12 @@ public class HandPoseCaptureWindow : EditorWindow
             return false;
         }
 
+        if (m_AnimationStartPose.Handedness != m_AnimationEndPose.Handedness)
+        {
+            error = "시작 포즈와 끝 포즈의 손(Left/Right)이 다릅니다.";
+            return false;
+        }
+
         error = null;
         return true;
     }
@@ -311,20 +397,37 @@ public class HandPoseCaptureWindow : EditorWindow
             return;
         }
 
+        var openClipName = HandPoseAnimationGenerator.InferClipNameFromPose(m_AnimationStartPose);
+        var gripClipName = HandPoseAnimationGenerator.InferClipNameFromPose(m_AnimationEndPose);
+
         var (openPath, gripPath) = HandPoseAnimationGenerator.GenerateOpenGripClips(
             m_AnimationStartPose,
             m_AnimationEndPose,
             m_AnimationRig,
-            m_AnimationOutputFolder);
+            m_AnimationOutputFolder,
+            openClipName,
+            gripClipName);
 
         var message = $"생성됨:\n{openPath}\n{gripPath}";
 
-        if (m_AssignToOculusController && m_AnimationRig == HandPoseAnimationRig.OculusLeftHand)
+        if (m_AssignToHandController)
         {
-            if (HandPoseAnimationGenerator.TryAssignToOculusLeftBlendTree(openPath, gripPath))
-                message += "\n\nOculusHand_L.controller 블렌드 트리에 연결했습니다.";
+            if (HandPoseAnimationGenerator.TryAssignToHandBlendTree(m_AnimationRig, openPath, gripPath))
+                message += $"\n\n{HandPoseAnimationGenerator.GetControllerPath(m_AnimationRig)} 블렌드 트리에 연결했습니다.";
             else
-                message += "\n\n컨트롤러 연결에 실패했습니다. 수동으로 할당하세요.";
+                message += "\n\n컨트롤러 블렌드 트리 연결에 실패했습니다.";
+
+            if (HandPoseRigUtility.IsOculusRig(m_AnimationRig) == false &&
+                HandPoseAnimationGenerator.TryAssignControllerToSceneHand(m_AnimationRig))
+            {
+                var handLabel = HandPoseRigUtility.IsRightRig(m_AnimationRig) ? "RightHand" : "LeftHand";
+                message += $"\n씬 {handLabel} Animator에 {System.IO.Path.GetFileNameWithoutExtension(HandPoseAnimationGenerator.GetControllerPath(m_AnimationRig))}을 할당했습니다.";
+            }
+            else if (!HandPoseRigUtility.IsOculusRig(m_AnimationRig))
+            {
+                var handLabel = HandPoseRigUtility.IsRightRig(m_AnimationRig) ? "RightHand" : "LeftHand";
+                message += $"\n씬에서 {handLabel} Animator를 찾지 못했습니다.";
+            }
         }
 
         EditorUtility.DisplayDialog("애니메이션 생성", message, "OK");
@@ -587,7 +690,6 @@ public class HandPoseCaptureWindow : EditorWindow
 
         var capturerObject = new GameObject(CapturerObjectName);
         capturerObject.AddComponent<HandPoseCaptureController>();
-        capturerObject.AddComponent<HandPoseCaptureVisibilitySupport>();
 
         if (Application.isPlaying)
         {
