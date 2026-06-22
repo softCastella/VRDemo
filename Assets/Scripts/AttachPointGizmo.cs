@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.Serialization;
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
@@ -15,16 +16,28 @@ public class AttachPointGizmo : MonoBehaviour
     const float DefaultPlayControllerLiftY = 1.1176f;
 
     [SerializeField]
-    float m_Radius = 0.04f;
+    [Tooltip("로컬 반지름입니다. Transform Scale에 따라 Scene 기즈모 크기가 함께 변합니다.")]
+    float m_Radius = 0.012f;
+
+    [FormerlySerializedAs("m_Color")]
+    [SerializeField]
+    Color m_WireColor = Color.red;
 
     [SerializeField]
-    Color m_Color = Color.red;
+    bool m_DrawFaceFill = true;
+
+    [SerializeField]
+    Color m_FaceColor = new(1f, 0f, 0f, 0.65f);
 
     [Tooltip("Play 시 LeftController가 올라가는 높이. XR Origin Camera Y Offset과 맞추세요.")]
     [SerializeField]
     float m_PlayControllerLiftY = DefaultPlayControllerLiftY;
 
     public float Radius => m_Radius;
+    public float WorldRadius => AttachPointGizmoDraw.GetWorldRadius(transform, m_Radius);
+    public bool DrawFaceFill => m_DrawFaceFill;
+    public Color FaceColor => m_FaceColor;
+    public Color WireColor => m_WireColor;
 
 #if UNITY_EDITOR
     [ContextMenu("Align Cube To Left GrabAttach (Play Pose)")]
@@ -58,21 +71,30 @@ public class AttachPointGizmo : MonoBehaviour
 
     void OnDrawGizmos()
     {
+#if UNITY_EDITOR
+        if (!Application.isPlaying)
+            return;
+#endif
         DrawSphere(false);
     }
 
     void OnDrawGizmosSelected()
     {
+#if UNITY_EDITOR
+        if (!Application.isPlaying)
+            return;
+#endif
         DrawSphere(true);
     }
 
     void DrawSphere(bool selected)
     {
-        Gizmos.color = selected ? new Color(m_Color.r, m_Color.g, m_Color.b, 1f) : m_Color;
-
-        Gizmos.DrawWireSphere(transform.position, m_Radius);
-
-        if (selected)
-            Gizmos.DrawSphere(transform.position, m_Radius * 0.2f);
+        AttachPointGizmoDraw.DrawSphereGizmo(
+            transform,
+            m_Radius,
+            m_FaceColor,
+            m_WireColor,
+            m_DrawFaceFill,
+            selected);
     }
 }

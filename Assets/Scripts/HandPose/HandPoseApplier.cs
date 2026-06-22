@@ -70,7 +70,7 @@ public static class HandPoseApplier
             applied++;
         }
 
-        if (boneMap.TryGetValue(LeftWristBoneName, out var wristTransform))
+        if (boneMap.TryGetValue(GetWristBoneName(pose), out var wristTransform))
         {
             if (applyPosition)
                 wristTransform.localPosition = Vector3.zero;
@@ -81,6 +81,11 @@ public static class HandPoseApplier
 
         return applied;
     }
+
+    static string GetWristBoneName(HandPoseData pose) =>
+        pose != null && pose.Handedness == UnityEngine.XR.Hands.Handedness.Right
+            ? RightWristBoneName
+            : LeftWristBoneName;
 
     static int ApplyLegacyLocal(
         HandPoseData pose,

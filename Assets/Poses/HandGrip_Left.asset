@@ -1,0 +1,123 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 82161128d0d70ef4b90c92c21dbe5868, type: 3}
+  m_Name: HandGrip_Left
+  m_EditorClassIdentifier: Assembly-CSharp::HandPoseData
+  m_PoseName: HandGripRe
+  m_Handedness: 1
+  m_CapturedAtUtc: 2026-06-22T06:14:40.3418428Z
+  m_Bones:
+  - jointId: 1
+    boneName: L_Wrist
+    localPosition: {x: 0, y: 0, z: 0}
+    localRotation: {x: 0, y: 0, z: 0, w: 1}
+  - jointId: 7
+    boneName: L_IndexMetacarpal
+    localPosition: {x: 0.015702443, y: -0.011566596, z: 0.034762416}
+    localRotation: {x: 0, y: 0, z: 0, w: 1}
+  - jointId: 8
+    boneName: L_IndexProximal
+    localPosition: {x: 0.021617966, y: -0.006716074, z: 0.088118196}
+    localRotation: {x: 0.51638263, y: -0.05729355, z: -0.018614745, w: 0.8542364}
+  - jointId: 9
+    boneName: L_IndexIntermediate
+    localPosition: {x: 0.017540874, y: -0.03735605, z: 0.1041375}
+    localRotation: {x: 0.9935256, y: -0.044460677, z: 0.06057912, w: 0.08520838}
+  - jointId: 10
+    boneName: L_IndexDistal
+    localPosition: {x: 0.020057209, y: -0.041253705, z: 0.082316376}
+    localRotation: {x: 0.84558177, y: -0.016127864, z: 0.06561901, w: -0.5295523}
+  - jointId: 11
+    boneName: L_IndexTip
+    localPosition: {x: 0.022456607, y: -0.02330043, z: 0.07260873}
+    localRotation: {x: 0.84558177, y: -0.016127864, z: 0.06561901, w: -0.5295523}
+  - jointId: 22
+    boneName: L_LittleMetacarpal
+    localPosition: {x: -0.021111166, y: -0.008646819, z: 0.031277247}
+    localRotation: {x: 0.018311776, y: -0.14034283, z: 0.20703602, w: 0.96804166}
+  - jointId: 23
+    boneName: L_LittleProximal
+    localPosition: {x: -0.03217689, y: -0.0125674205, z: 0.07150164}
+    localRotation: {x: 0.56916505, y: -0.033674154, z: 0.18985967, w: 0.7992936}
+  - jointId: 24
+    boneName: L_LittleIntermediate
+    localPosition: {x: -0.027599884, y: -0.038587455, z: 0.081366904}
+    localRotation: {x: 0.9646784, y: 0.061780784, z: 0.22593357, w: 0.12055148}
+  - jointId: 25
+    boneName: L_LittleDistal
+    localPosition: {x: -0.019195387, y: -0.042403463, z: 0.065168716}
+    localRotation: {x: 0.8504475, y: 0.18703036, z: 0.18811136, w: -0.45428288}
+  - jointId: 26
+    boneName: L_LittleTip
+    localPosition: {x: -0.015436692, y: -0.02598154, z: 0.054102708}
+    localRotation: {x: 0.8504475, y: 0.18703036, z: 0.18811136, w: -0.45428288}
+  - jointId: 12
+    boneName: L_MiddleMetacarpal
+    localPosition: {x: 0.000823259, y: -0.008440662, z: 0.03277737}
+    localRotation: {x: 0, y: 0, z: 0, w: 1}
+  - jointId: 13
+    boneName: L_MiddleProximal
+    localPosition: {x: 0.0015842632, y: -0.0023344678, z: 0.08779727}
+    localRotation: {x: 0.55406445, y: -0.060948472, z: 0.04436213, w: 0.8290537}
+  - jointId: 14
+    boneName: L_MiddleIntermediate
+    localPosition: {x: -0.0004608523, y: -0.03874836, z: 0.10271566}
+    localRotation: {x: 0.98746204, y: -0.009055089, z: 0.08830896, w: 0.13053153}
+  - jointId: 15
+    boneName: L_MiddleDistal
+    localPosition: {x: 0.00388999, y: -0.045308344, z: 0.07868202}
+    localRotation: {x: 0.87136865, y: -0.043965153, z: 0.113304116, w: -0.4753378}
+  - jointId: 16
+    boneName: L_MiddleTip
+    localPosition: {x: 0.009130159, y: -0.027069703, z: 0.065790676}
+    localRotation: {x: 0.87136865, y: -0.043965153, z: 0.113304116, w: -0.4753378}
+  - jointId: 17
+    boneName: L_RingMetacarpal
+    localPosition: {x: -0.013761968, y: -0.005522058, z: 0.031921655}
+    localRotation: {x: 0, y: 0, z: 0, w: 1}
+  - jointId: 18
+    boneName: L_RingProximal
+    localPosition: {x: -0.016031947, y: -0.0059934817, z: 0.08141509}
+    localRotation: {x: 0.571794, y: -0.059757065, z: 0.09629759, w: 0.81253165}
+  - jointId: 19
+    boneName: L_RingIntermediate
+    localPosition: {x: -0.01556601, y: -0.039668232, z: 0.09354887}
+    localRotation: {x: 0.9824796, y: 0.028807588, z: 0.15484068, w: 0.09964096}
+  - jointId: 20
+    boneName: L_RingDistal
+    localPosition: {x: -0.008004655, y: -0.044226307, z: 0.070810765}
+    localRotation: {x: 0.84172535, y: 0.087203026, z: 0.1353911, w: -0.5153284}
+  - jointId: 21
+    boneName: L_RingTip
+    localPosition: {x: -0.004723857, y: -0.024999265, z: 0.059838846}
+    localRotation: {x: 0.84172535, y: 0.087203026, z: 0.1353911, w: -0.5153284}
+  - jointId: 3
+    boneName: L_ThumbMetacarpal
+    localPosition: {x: 0.022757692, y: -0.020446759, z: 0.034277543}
+    localRotation: {x: 0.08359231, y: 0.36737522, z: -0.6807913, w: 0.62814885}
+  - jointId: 4
+    boneName: L_ThumbProximal
+    localPosition: {x: 0.033134922, y: -0.03850926, z: 0.055648785}
+    localRotation: {x: 0.3364622, y: 0.035138126, z: -0.72270447, w: 0.60270774}
+  - jointId: 5
+    boneName: L_ThumbDistal
+    localPosition: {x: 0.019362688, y: -0.05266491, z: 0.07956782}
+    localRotation: {x: 0.5588546, y: -0.21372093, z: -0.7093578, w: 0.37258056}
+  - jointId: 6
+    boneName: L_ThumbTip
+    localPosition: {x: -0.0017962683, y: -0.05534328, z: 0.087046705}
+    localRotation: {x: 0.5588546, y: -0.21372093, z: -0.7093578, w: 0.37258056}
+  - jointId: 2
+    boneName: L_Palm
+    localPosition: {x: 0.0012037634, y: -0.0053875768, z: 0.06028734}
+    localRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_NormalizedToWristOrigin: 1

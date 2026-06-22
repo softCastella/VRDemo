@@ -1,20 +1,21 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.Serialization;
 using UnityEngine.XR.Hands;
 using UnityEngine.XR.Interaction.Toolkit.Inputs;
 
 [DisallowMultipleComponent]
 public class HandPoseCaptureController : MonoBehaviour
 {
-    const string LeftInteractionMapName = "XRI Left Interaction";
     const string GripButtonActionName = "Select";
     const string GripValueActionName = "Select Value";
-    const string LeftGripButtonBinding = "<XRController>{LeftHand}/{GripButton}";
-    const string LeftGripValueBinding = "<XRController>{LeftHand}/{Grip}";
 
     [SerializeField]
-    XRHandSkeletonDriver m_LeftHandSkeletonDriver;
+    Handedness m_CaptureHandedness = Handedness.Left;
+
+    [SerializeField, FormerlySerializedAs("m_LeftHandSkeletonDriver")]
+    XRHandSkeletonDriver m_HandSkeletonDriver;
 
     [SerializeField]
     [Range(0.5f, 1f)]
@@ -25,10 +26,12 @@ public class HandPoseCaptureController : MonoBehaviour
     bool m_OwnsGripButtonAction;
     bool m_OwnsGripValueAction;
     bool m_WasGripPressed;
+    Handedness m_ResolvedHandedness;
 
     void OnEnable()
     {
-        ResolveGripActions();
+        m_ResolvedHandedness = HandPoseCaptureSession.CaptureHandedness;
+        ResolveGripActions(m_ResolvedHandedness);
         m_GripButtonAction?.Enable();
         m_GripValueAction?.Enable();
         m_WasGripPressed = IsGripPressed();
@@ -59,6 +62,16 @@ public class HandPoseCaptureController : MonoBehaviour
         if (!Application.isPlaying || !HandPoseCaptureSession.IsListening)
             return;
 
+        var handedness = HandPoseCaptureSession.CaptureHandedness;
+        if (handedness != m_ResolvedHandedness)
+        {
+            m_ResolvedHandedness = handedness;
+            ResolveGripActions(handedness);
+            m_GripButtonAction?.Enable();
+            m_GripValueAction?.Enable();
+            m_WasGripPressed = IsGripPressed();
+        }
+
         var pressed = IsGripPressed();
         if (pressed && !m_WasGripPressed)
             CaptureNow();
@@ -81,16 +94,19 @@ public class HandPoseCaptureController : MonoBehaviour
 
     void TryCapturePose()
     {
-        var driver = ResolveLeftHandSkeletonDriver();
+        var handedness = HandPoseCaptureSession.CaptureHandedness;
+        var driver = ResolveHandSkeletonDriver(handedness);
         if (driver == null)
         {
-            HandPoseCaptureSession.SetStatus("왼손 XRHandSkeletonDriver를 찾지 못했습니다. Hand Visualizer가 활성인지 확인하세요.");
+            HandPoseCaptureSession.SetStatus(
+                $"{GetHandLabel(handedness)} XRHandSkeletonDriver를 찾지 못했습니다. Hand Visualizer가 활성인지 확인하세요.");
             return;
         }
 
         if (!TryCaptureFromSkeletonDriver(driver, out var bones))
         {
-            HandPoseCaptureSession.SetStatus("트래킹된 관절이 없습니다. 왼손이 인식된 상태에서 다시 시도하세요.");
+            HandPoseCaptureSession.SetStatus(
+                $"트래킹된 관절이 없습니다. {GetHandLabel(handedness)}이 인식된 상태에서 다시 시도하세요.");
             return;
         }
 
@@ -98,10 +114,13 @@ public class HandPoseCaptureController : MonoBehaviour
             ? "HandPose"
             : HandPoseCaptureSession.NextPoseName.Trim();
 
-        var snapshot = new HandPoseSnapshot(poseName, Handedness.Left, bones);
+        var snapshot = new HandPoseSnapshot(poseName, handedness, bones);
         HandPoseCaptureSession.NotifyPoseCaptured(snapshot);
-        HandPoseCaptureSession.SetStatus($"캡처 완료: {poseName} ({bones.Count} bones)");
+        HandPoseCaptureSession.SetStatus($"캡처 완료 ({GetHandLabel(handedness)}): {poseName} ({bones.Count} bones)");
     }
+
+    static string GetHandLabel(Handedness handedness) =>
+        handedness == Handedness.Right ? "오른손" : "왼손";
 
     static bool TryCaptureFromSkeletonDriver(XRHandSkeletonDriver driver, out List<HandBonePoseData> bones)
     {
@@ -119,37 +138,72 @@ public class HandPoseCaptureController : MonoBehaviour
         return bones.Count > 0;
     }
 
-    XRHandSkeletonDriver ResolveLeftHandSkeletonDriver()
+    XRHandSkeletonDriver ResolveHandSkeletonDriver(Handedness handedness)
     {
-        if (m_LeftHandSkeletonDriver != null)
-            return m_LeftHandSkeletonDriver;
+        if (m_HandSkeletonDriver != null)
+        {
+            var events = m_HandSkeletonDriver.GetComponent<XRHandTrackingEvents>();
+            if (events == null || events.handedness == handedness)
+                return m_HandSkeletonDriver;
+        }
 
         var drivers = FindObjectsByType<XRHandSkeletonDriver>(FindObjectsInactive.Include, FindObjectsSortMode.None);
         foreach (var driver in drivers)
         {
             var handEvents = driver.GetComponent<XRHandTrackingEvents>();
-            if (handEvents != null && handEvents.handedness == Handedness.Left)
+            if (handEvents != null && handEvents.handedness == handedness)
                 return driver;
         }
 
-        return drivers.Length > 0 ? drivers[0] : null;
+        return null;
     }
 
-    void ResolveGripActions()
+    void ResolveGripActions(Handedness handedness)
     {
-        m_GripButtonAction = FindAction(LeftInteractionMapName, GripButtonActionName);
-        m_GripValueAction = FindAction(LeftInteractionMapName, GripValueActionName);
+        DisposeOwnedGripActions();
+
+        var interactionMapName = handedness == Handedness.Right
+            ? "XRI Right Interaction"
+            : "XRI Left Interaction";
+
+        var handDevice = handedness == Handedness.Right ? "{RightHand}" : "{LeftHand}";
+
+        m_GripButtonAction = FindAction(interactionMapName, GripButtonActionName);
+        m_GripValueAction = FindAction(interactionMapName, GripValueActionName);
 
         if (m_GripButtonAction == null)
         {
-            m_GripButtonAction = new InputAction("HandPoseLeftGripButton", InputActionType.Button, LeftGripButtonBinding);
+            m_GripButtonAction = new InputAction(
+                $"HandPose{(handedness == Handedness.Right ? "Right" : "Left")}GripButton",
+                InputActionType.Button,
+                $"<XRController>{handDevice}/{{GripButton}}");
             m_OwnsGripButtonAction = true;
         }
 
         if (m_GripValueAction == null)
         {
-            m_GripValueAction = new InputAction("HandPoseLeftGripValue", InputActionType.Value, LeftGripValueBinding);
+            m_GripValueAction = new InputAction(
+                $"HandPose{(handedness == Handedness.Right ? "Right" : "Left")}GripValue",
+                InputActionType.Value,
+                $"<XRController>{handDevice}/{{Grip}}");
             m_OwnsGripValueAction = true;
+        }
+    }
+
+    void DisposeOwnedGripActions()
+    {
+        if (m_OwnsGripButtonAction)
+        {
+            m_GripButtonAction?.Dispose();
+            m_GripButtonAction = null;
+            m_OwnsGripButtonAction = false;
+        }
+
+        if (m_OwnsGripValueAction)
+        {
+            m_GripValueAction?.Dispose();
+            m_GripValueAction = null;
+            m_OwnsGripValueAction = false;
         }
     }
 

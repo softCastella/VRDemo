@@ -3,13 +3,19 @@
   <Project Path="Assembly-CSharp.csproj" />
   <Project Path="Unity.XR.Hands.Samples.VisualizerSample.csproj" />
   <Project Path="Assembly-CSharp-Editor.csproj" />
+  <Project Path="VG_Scripts.csproj" />
   <Project Path="Unity.XR.Interaction.Toolkit.Samples.SpatialKeyboard.csproj" />
   <Project Path="Unity.XR.Interaction.Toolkit.Samples.Hands.csproj" />
   <Project Path="Unity.XR.Hands.Samples.HandCapture.csproj" />
+  <Project Path="Gleechi.VirtualGrasp.Onboarding.csproj" />
+  <Project Path="Gleechi.VirtualGrasp.Tests.csproj" />
   <Project Path="Unity.XR.Hands.Samples.HandCapture.Editor.csproj" />
   <Project Path="Unity.XR.Interaction.Toolkit.Samples.SpatialKeyboard.Editor.csproj" />
   <Project Path="Unity.XR.Hands.Samples.Gestures.csproj" />
   <Project Path="Unity.XR.Hands.Samples.Gestures.Editor.csproj" />
+  <Project Path="Dependencies.csproj" />
+  <Project Path="Gleechi.VirtualGrasp.Build.csproj" />
   <Project Path="Unity.XR.Interaction.Toolkit.Samples.StarterAssets.Editor.csproj" />
+  <Project Path="Gleechi.VirtualGrasp.Editor.csproj" />
   <Project Path="Unity.XR.Interaction.Toolkit.Samples.Hands.Editor.csproj" />
 </Solution>
