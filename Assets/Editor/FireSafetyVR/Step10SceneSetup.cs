@@ -100,25 +100,25 @@ public static class Step10SceneSetup
         grab.throwOnDetach = false;
 
         var nozzle = nozzleRoot.AddComponent<FireHoseNozzle>();
-        var bridge = nozzleRoot.AddComponent<FireHoseNozzleTriggerBridge>();
+        var bridge = nozzleRoot.AddComponent<NozzleTriggerBridge>();
 
         var hoseSo = new SerializedObject(simpleHose);
-        hoseSo.FindProperty("m_HoseStart").objectReferenceValue = hoseStart.transform;
-        hoseSo.FindProperty("m_Nozzle").objectReferenceValue = nozzleRoot.transform;
-        hoseSo.FindProperty("m_LineRenderer").objectReferenceValue = line;
+        hoseSo.FindProperty("hoseStart").objectReferenceValue = hoseStart.transform;
+        hoseSo.FindProperty("nozzle").objectReferenceValue = nozzleRoot.transform;
+        hoseSo.FindProperty("lineRenderer").objectReferenceValue = line;
         hoseSo.ApplyModifiedPropertiesWithoutUndo();
 
         var nozzleSo = new SerializedObject(nozzle);
-        nozzleSo.FindProperty("m_ShootPoint").objectReferenceValue = shootPoint.transform;
-        nozzleSo.FindProperty("m_WaterParticle").objectReferenceValue = water;
+        nozzleSo.FindProperty("shootPoint").objectReferenceValue = shootPoint.transform;
+        nozzleSo.FindProperty("waterParticle").objectReferenceValue = water;
         nozzleSo.ApplyModifiedPropertiesWithoutUndo();
 
         var systemSo = new SerializedObject(system);
-        systemSo.FindProperty("m_Nozzle").objectReferenceValue = nozzle;
+        systemSo.FindProperty("nozzle").objectReferenceValue = nozzle;
         systemSo.ApplyModifiedPropertiesWithoutUndo();
 
         var bridgeSo = new SerializedObject(bridge);
-        bridgeSo.FindProperty("m_System").objectReferenceValue = system;
+        bridgeSo.FindProperty("hydrant").objectReferenceValue = system;
         bridgeSo.ApplyModifiedPropertiesWithoutUndo();
 
         var valveSo = new SerializedObject(valve.GetComponent<FireHydrantValveInteractable>());
@@ -156,8 +156,8 @@ public static class Step10SceneSetup
 
         var fireTarget = fire.AddComponent<FireTarget>();
         var fireSo = new SerializedObject(fireTarget);
-        fireSo.FindProperty("m_FireParticle").objectReferenceValue = firePs;
-        fireSo.FindProperty("m_FireVisualRoot").objectReferenceValue = fireVisual;
+        fireSo.FindProperty("fireParticle").objectReferenceValue = firePs;
+        fireSo.FindProperty("fireVisualRoot").objectReferenceValue = fireVisual;
         fireSo.ApplyModifiedPropertiesWithoutUndo();
 
         if (Object.FindFirstObjectByType<XRInteractionManager>() == null)
