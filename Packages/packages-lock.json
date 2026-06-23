@@ -9,6 +9,20 @@
       },
       "hash": "63302d98fa1cc46724ea137cdd2aef465489c7d2"
     },
+    "com.smilejsu82.vr-handpose-fire": {
+      "version": "https://github.com/smilejsu82/vr-handpose-fire-upm.git",
+      "depth": 0,
+      "source": "git",
+      "dependencies": {
+        "com.unity.xr.interaction.toolkit": "3.4.1",
+        "com.unity.xr.hands": "1.7.3",
+        "com.unity.inputsystem": "1.19.0",
+        "com.unity.render-pipelines.universal": "17.4.0",
+        "com.unity.xr.openxr": "1.16.1",
+        "com.unity.xr.management": "4.6.0"
+      },
+      "hash": "4b8c59a29e11fbf732c6c9767ccb39cde0c692a0"
+    },
     "com.unity.ai.navigation": {
       "version": "2.0.12",
       "depth": 0,

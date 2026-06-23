@@ -1,0 +1,19 @@
+{
+    "name": "VRDemo.HandPose.Editor",
+    "rootNamespace": "",
+    "references": [
+        "VRDemo.HandPose",
+        "Unity.XR.Hands"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

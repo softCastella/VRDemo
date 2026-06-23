@@ -1,0 +1,20 @@
+{
+    "name": "VRDemo.HandPose",
+    "rootNamespace": "",
+    "references": [
+        "Unity.InputSystem",
+        "Unity.XR.CoreUtils",
+        "Unity.XR.Hands",
+        "Unity.XR.Hands.Samples.VisualizerSample",
+        "Unity.XR.Interaction.Toolkit"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
